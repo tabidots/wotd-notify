@@ -10,10 +10,15 @@ from pathlib import Path
 from dotenv import load_dotenv
 from dataclasses import dataclass
 from datetime import datetime
+from email.utils import parsedate_to_datetime
 from zoneinfo import ZoneInfo
 
 import requests
 from bs4 import BeautifulSoup
+from bs4 import XMLParsedAsHTMLWarning
+import warnings
+
+warnings.filterwarnings("ignore", category=XMLParsedAsHTMLWarning)
 
 load_dotenv(Path(__file__).parent / ".env")
 
@@ -24,7 +29,7 @@ TIMEOUT = 20
 HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (compatible; DailyWordBot/1.0; "
-        "+https://example.com/bot-info)"
+        "+https://github.com/tabidots/wotd-notify)"
     )
 }
 
@@ -99,13 +104,34 @@ def require_word(language: str, word: str | None, url: str) -> Word:
 # ── Site adapters ─────────────────────────────────────────────────────────────
 
 def merriam_webster() -> Word:
-    url = "https://www.merriam-webster.com/word-of-the-day"
+    # The main HTML page (merriam-webster.com/word-of-the-day) returned a
+    # 403 from the VPS's IP range, likely bot protection on datacenter
+    # IPs. Try the official RSS feed instead -- feed endpoints are
+    # typically behind lighter (or no) bot protection than the main site.
+    url = "https://www.merriam-webster.com/wotd/feed/rss2"
     soup = get_soup(url)
-
-    # The current page uses the main Word of the Day heading.
-    word = soup.find("h2")
-
-    return require_word("English", word.get_text() if word else None, url)
+ 
+    item = soup.find("item")
+    if item is None:
+        raise RuntimeError("Merriam-Webster RSS feed had no <item> entries")
+ 
+    title_tag = item.find("title")
+    word_text = clean(title_tag.get_text()) if title_tag else None
+ 
+    pub_date_tag = item.find("pubdate")
+    if pub_date_tag is not None:
+        pub_date = parsedate_to_datetime(clean(pub_date_tag.get_text()))
+        eastern = ZoneInfo("America/New_York")
+        eastern_today = datetime.now(eastern).date()
+ 
+        if pub_date.astimezone(eastern).date() != eastern_today:
+            raise RuntimeError(
+                f"Merriam-Webster RSS word is dated "
+                f"{pub_date.astimezone(eastern).date()}, "
+                f"but today (ET) is {eastern_today}"
+            )
+ 
+    return require_word("English", word_text, url)
 
 
 def rae() -> Word:
@@ -269,11 +295,11 @@ def main() -> None:
 
     fetchers = [
         merriam_webster,
-        rae,
-        duden,
-        treccani,
-        priberam,
-        sao,
+        # rae,
+        # duden,
+        # treccani,
+        # priberam,
+        # sao,
     ]
 
     results: list[Word] = []

@@ -212,7 +212,7 @@ wheels = [
 ]
 
 [[package]]
-name = "wotd"
+name = "wotd-notify"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
