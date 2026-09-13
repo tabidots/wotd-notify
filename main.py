@@ -90,6 +90,20 @@ def clean(text: str) -> str:
     return re.sub(r"\s+", " ", text).strip()
 
 
+CDATA_PATTERN = re.compile(r"^<!\[CDATA\[(.*)\]\]>$", re.DOTALL)
+ 
+ 
+def strip_cdata(text: str) -> str:
+    """Strip a literal <![CDATA[...]]> wrapper if html.parser left it in.
+ 
+    Whether BeautifulSoup's html.parser backend leaves CDATA markers as
+    literal text or strips them appears to vary across Python versions,
+    so this is applied defensively rather than relying on that behavior.
+    """
+    match = CDATA_PATTERN.match(text.strip())
+    return match.group(1) if match else text
+
+
 def require_word(language: str, word: str | None, url: str) -> Word:
     word = clean(word or "")
 
@@ -116,7 +130,7 @@ def merriam_webster() -> Word:
         raise RuntimeError("Merriam-Webster RSS feed had no <item> entries")
  
     title_tag = item.find("title")
-    word_text = clean(title_tag.get_text()) if title_tag else None
+    word_text = clean(strip_cdata(title_tag.get_text())) if title_tag else None
  
     pub_date_tag = item.find("pubdate")
     if pub_date_tag is not None:
@@ -295,11 +309,11 @@ def main() -> None:
 
     fetchers = [
         merriam_webster,
-        # rae,
-        # duden,
-        # treccani,
-        # priberam,
-        # sao,
+        rae,
+        duden,
+        treccani,
+        priberam,
+        sao,
     ]
 
     results: list[Word] = []
